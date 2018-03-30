@@ -8,24 +8,14 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.StringReader;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.LongPoint;
@@ -35,8 +25,6 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
@@ -48,6 +36,7 @@ import org.apache.lucene.store.FSDirectory;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import static org.junit.Assert.assertEquals;
 
 import io.bdrc.lucene.zh.ChineseAnalyzer;
 
@@ -61,44 +50,52 @@ public class LuceneTest {
     @Test
     public void testTC2PYstrict() throws IOException, ParseException {
         String profile = "TC2PYstrict";
-        File testSubFolder = folder.newFolder(profile);
+        String input = "丹珠尔";
+        String query = "dān zhū ěr";
         
         Analyzer indexingAnalyzer = new ChineseAnalyzer(profile, false, 0);
         Analyzer queryingAnalyzer = new StandardAnalyzer();
         
-        String input = "丹珠尔";
-        String query = "";
+        File testSubFolder = folder.newFolder(profile);
+        
         indexTest(input, indexingAnalyzer, testSubFolder);
-        
-        searchIndex(query, queryingAnalyzer, testSubFolder, 1);
-        
+        int hits = searchIndex(query, queryingAnalyzer, testSubFolder, 1);
         folder.delete();  // just to be sure it is done
+        
+        assertEquals(hits, 1);
     }
     
-    void searchIndex(String queryString, Analyzer analyzer, File indexFolder, int repeat) throws IOException, ParseException {
+    int searchIndex(String queryString, Analyzer analyzer, File indexFolder, int repeat) throws IOException, ParseException {
         String field = "contents";
-        String queries = null;
         
         IndexReader reader = DirectoryReader.open(FSDirectory.open(indexFolder.toPath()));
         IndexSearcher searcher = new IndexSearcher(reader);
         QueryParser parser = new QueryParser(field, analyzer);
         Query query = parser.parse(queryString);
-     // Collect enough docs to show 5 pages
-        TopDocs results = searcher.search(query, 5 * hitsPerPage);
-        ScoreDoc[] hits = results.scoreDocs;
-        
-        int numTotalHits = results.totalHits;
-        System.out.println(numTotalHits + " total matching documents");
+        TopDocs results = null;
+        ScoreDoc[] hits = null;
+        int numTotalHits = -1;
 
         if (repeat > 0) {                           // repeat & time as benchmark
             Date start = new Date();
             for (int i = 0; i < repeat; i++) {
-                searcher.search(query, 100);
+                results = searcher.search(query, 100);
+                hits = results.scoreDocs;
+                numTotalHits = results.totalHits;
             }
             Date end = new Date();
             System.out.println("Time: "+(end.getTime()-start.getTime())+"ms");
         }
+        System.out.println(numTotalHits + " total matching documents");
+        
+        for (int i = 0; i < hits.length; i++) {
+            // output raw format
+            System.out.println("\tdoc="+hits[i].doc+" score="+hits[i].score);
+            
+        }
+        
         reader.close();
+        return numTotalHits;
     }
     
     /** Bootstrapping for indexDoc() */
